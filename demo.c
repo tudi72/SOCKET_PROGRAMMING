@@ -14,9 +14,8 @@
 #include <time.h>
 
 #define MESSAGE_LENGTH 256
-
-pthread_t PC_1,PC_2,PC_3;
-sem_t semaphore;
+pthread_mutex_t mutex;
+pthread_cond_t cond;
 
 typedef struct{
     int number;
@@ -52,72 +51,50 @@ struct sockaddr_in init_socket(const char* address){
     return socket_address;
 }
 
-void* routine_client_main(void* args){
+void* routine_server(void* args){
+
     PC_info* arg = (PC_info*)args;
-
-  // AF_INET      = IPv4                               | domain
-    // SOCK_STREAM  = sequenced, two-way communication   | type specifying communication semantics
-    // 0            = same protocol as socket type       | protocol
+    pthread_mutex_lock(&mutex);
     int socket_descriptor = socket(AF_INET,SOCK_STREAM,0);
-    int socket_descriptor2 = socket(AF_INET,SOCK_STREAM,0);
-
-    if(socket_descriptor == -1 || socket_descriptor2 == -1){
+    if(socket_descriptor == -1){
         perror("couldn't create socket descriptor");
         exit(1);
     }
-
-    // initialize server address IPV4 using sockaddr_in
     struct sockaddr_in server_address;
-
-    // sin_family   = IPV4                      | required in LInux 
-    // sin_port     = port                      | port in network byte order
-    // sin_addr     = inet_addr("127.0.0.1");   | IP host address
     server_address.sin_family       = AF_INET; 
     server_address.sin_port         = htons(9002);
     server_address.sin_addr.s_addr  = inet_addr(arg->host);
-
-    struct sockaddr_in server_address2;
-    // sin_family   = IPV4                      | required in LInux 
-    // sin_port     = port                      | port in network byte order
-    // sin_addr     = inet_addr("127.0.0.1");   | IP host address
-    server_address2.sin_family       = AF_INET; 
-    server_address2.sin_port         = htons(9002);
-    server_address2.sin_addr.s_addr  = inet_addr(arg->host2);
-
-
-    int connection_status = connect(socket_descriptor,(struct sockaddr*)&server_address,sizeof(server_address));
-    int connection_status2 = connect(socket_descriptor2,(struct sockaddr*)&server_address2,sizeof(server_address2));
-
-
-    if(connection_status < 0 || connection_status2 < 0 ){
-        perror("ERROR : binding socket to address");
+    int bind_output = bind(socket_descriptor,(struct sockaddr*)&server_address,sizeof(server_address));
+    if(bind_output < 0){
+        perror("SERVER ERROR : cannot bind address to socket...\n");
         exit(1);
     }
+    pthread_mutex_unlock(&mutex);
+    pthread_cond_signal(&cond);
 
+    listen(socket_descriptor,5);
+    int client_socket;
+    client_socket = accept(socket_descriptor,NULL,NULL);
 
-    // receive data from the server
-    int number = 1;
-    while(number <= 100){
-        
-        if((errno = send(socket_descriptor2,&number,sizeof(int),0))  == -1)
-        {
-            fprintf(stderr,"[ERROR CLIENT]: send(socket2) : %d\n",errno);
+    int number = 0;
+     while(number <= 100){ 
+
+        if((errno = recv(client_socket,&number,sizeof(int),0)) < 0){
+            fprintf(stderr,"[%s] : ERROR\t%d\n",arg->host, errno);
         }
 
-        printf("[CLIENT] :    send  to [%s] data %d\n",arg->host2,number);
-        
-        if((errno = recv(socket_descriptor,&number,sizeof(int),0)) == -1)
-        {
-           fprintf(stderr,"[ERROR CLIENT]: recv(socket) : %d\n",errno);
-        }
         number++;
         if(number == 100) break;
-        printf("[%s]----->[CLIENT] : %d\n",arg->host,number);
+        printf("[%s] : %d\n",arg->host,number);
 
+
+        if((errno = send(client_socket,&number,sizeof(number),0)) < 0){
+            fprintf(stderr,"[%s]: ERROR\t%d\n",arg->host, errno);
+        }
     }
     close(socket_descriptor);
-    close(socket_descriptor2);
-}  
+}   
+
 
 void* routine_client(void* args){
     PC_info* arg = (PC_info*)args;
@@ -151,6 +128,9 @@ void* routine_client(void* args){
     server_address2.sin_port         = htons(9002);
     server_address2.sin_addr.s_addr  = inet_addr(arg->host2);
 
+    while(pthread_cond_wait(&cond, &mutex) == 0){
+        printf("wait...\n");
+    } // waiting for the servers to be created
 
     int connection_status = connect(socket_descriptor,(struct sockaddr*)&server_address,sizeof(server_address));
     int connection_status2 = connect(socket_descriptor2,(struct sockaddr*)&server_address2,sizeof(server_address2));
@@ -163,25 +143,24 @@ void* routine_client(void* args){
 
 
     // receive data from the server
-    int number;
+    int number = 1;
     while(number <= 100){
-        
-        if((errno = recv(socket_descriptor,&number,sizeof(int),0)) == -1)
-        {
-           fprintf(stderr,"[ERROR CLIENT]: recv(socket) : %d\n",errno);
-        }
-
-        number++;
-        if(number == 100) break;
-        printf("[%s]----->[CLIENT] : %d\n",arg->host,number);
-
 
         if((errno = send(socket_descriptor2,&number,sizeof(int),0))  == -1)
         {
             fprintf(stderr,"[ERROR CLIENT]: send(socket2) : %d\n",errno);
         }
-        printf("[CLIENT]----->[%s] : %d\n",arg->host2,number);
+
+        printf("[CLIENT] :    send  to [%s] data %d\n",arg->host2,number);
         
+        if((errno = recv(socket_descriptor,&number,sizeof(int),0)) == -1)
+        {
+           fprintf(stderr,"[ERROR CLIENT]: recv(socket) : %d\n",errno);
+        }
+        number++;
+        if(number == 100) break;
+        printf("[%s]----->[CLIENT] : %d\n",arg->host,number);
+
     }
     close(socket_descriptor);
     close(socket_descriptor2);
@@ -221,22 +200,28 @@ int main(){
                                 "127.0.0.1"};
     int n = 3;
     PC_info** info_1 = allocate_threads_args(n,host,host2);
+    pthread_mutex_init(&mutex,NULL);
+    pthread_cond_init(&cond,NULL);
+    pthread_t* thread = (pthread_t*)malloc(sizeof(pthread_t)* (n * 2));
 
-        
-    pthread_t* thread = (pthread_t*)malloc(sizeof(pthread_t)* n);
+    for(int i = 0;i < n;i++){
 
-    pthread_create(&thread[0],NULL,&routine_client,(void*)info_1[0]);
-    pthread_join(thread[0],NULL);
+        if(pthread_create(&thread[i],NULL,&routine_server,(void*)info_1[i]) != 0){
+            perror("SYSTEM : cannot create thread\n");
+            exit(1);
+        }
+     
+    }
 
-    for(int i = 1;i < n;i++){
-        if(pthread_create(&thread[i],NULL,&routine_client,(void*)info_1[i]) != 0){
+    for(int i = 0;i < n;i++){
+
+        if(pthread_create(&thread[i+n],NULL,&routine_client,(void*)info_1[i]) != 0){
             perror("SYSTEM : cannot create thread\n");
             exit(1);
         }
     }
 
-
-    for(int i = 1;i < n;i++){
+    for(int i = 0;i < 2*n;i++){
 
         if(pthread_join(thread[i],NULL) != 0){
             perror("SYSTEM : cannot join thread\n");
@@ -245,6 +230,8 @@ int main(){
 
 
     }
+    pthread_mutex_destroy(&mutex);
+    pthread_cond_destroy(&cond);
 
     return 0;
 }

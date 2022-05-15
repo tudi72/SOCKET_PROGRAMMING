@@ -12,7 +12,7 @@
 #define PORT 8080
 #define SA struct sockaddr
 
-void create_server_socket(){
+void create_server_socket(const char* adr){
 
     // AF_INET      = IPv4                               | domain
     // SOCK_STREAM  = sequenced, two-way communication   | type specifying communication semantics
@@ -32,7 +32,7 @@ void create_server_socket(){
     // sin_addr     = inet_addr("127.0.0.1");   | IP host address
     server_address.sin_family       = AF_INET; 
     server_address.sin_port         = htons(9002);
-    server_address.sin_addr.s_addr  = INADDR_ANY;
+    server_address.sin_addr.s_addr  = inet_addr(adr);
 
 
     // binding the socket descriptor to the server address 
@@ -53,28 +53,22 @@ void create_server_socket(){
 
     puts("Server : Connection accepted...\n");
 
-    //send data to client
-    char server_message[256] = "Server sends this message ...";
-    char client_message[256];
     int read_size;
-
-    // continue to send data as long as we receive a message from client    
-    while((read_size = recv(client_socket,client_message,2000, 0)) > 0){
-        
-        printf("SERVER : received client message %s\n",client_message);
-
-        // send message to client
-        write(socket_descriptor,server_message,sizeof(server_message));
+    int number;
+    // continue to send data as long as we receive a message from client
+    while(1){    
+        if(recv(client_socket,&number,sizeof(int),0) < 0){
+            puts("ERROR SERVER : didn't receive message from client...\n");
+            break;
+        }
+        printf("SERVER : received message \"%d\"\n",number);
+        number++;
+        if(number == 100) break;
+        if(send(client_socket,&number,sizeof(number),0) < 0){
+            puts("ERROR SERVER: cannot send message");
+            exit(1);
+        }
     }
-
-    if(read_size == 0){
-        perror("ERROR SERVER: client disconnected...\n");
-        fflush(stdout);
-    }
-    else if(read_size == -1){
-        perror("ERROR SERVER: receive message from client failed...\n");
-    }
-
     close(socket_descriptor);
 
 }   
@@ -86,6 +80,6 @@ int main(){
     // 2. bind socket to one and only one IP address
     // 3. listen to different clients(ip addresses)
     // 4. accept a connection and then send / recv data
-    create_server_socket();
+    create_server_socket("127.0.0.1");
     return 0;
 }

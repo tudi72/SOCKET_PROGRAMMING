@@ -10,6 +10,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <time.h>
 
 #define MESSAGE_LENGTH 256
 pthread_t PC_1,PC_2,PC_3;
@@ -27,6 +29,19 @@ void error(int output,const char* msg){
     }
 }
 
+void delay(int number_of_seconds)
+{
+    // Converting time into milli_seconds
+    int milli_seconds = 1000 * number_of_seconds;
+  
+    // Storing start time
+    clock_t start_time = clock();
+  
+    // looping till required time is not achieved
+    while (clock() < start_time + milli_seconds)
+        ;
+}
+
 struct sockaddr_in init_socket(const char* address){
     struct sockaddr_in socket_address;
     socket_address.sin_family       = AF_INET; 
@@ -34,6 +49,7 @@ struct sockaddr_in init_socket(const char* address){
     socket_address.sin_addr.s_addr  = inet_addr(address); 
     return socket_address;
 }
+
 
 void* routine_server(void* args){
 
@@ -68,22 +84,25 @@ void* routine_server(void* args){
     }
 
     listen(socket_descriptor,5);
-    printf("[%s] : accept client...\n",arg->host);
     int client_socket;
     client_socket = accept(socket_descriptor,NULL,NULL);
 
-    int read_size;
-    int client_message;
-    while(1){
-        while((read_size = recv(client_socket,&client_message,sizeof(int), 0)) > 0){
-            
-            printf("[%s] : server received %d\n",arg->host,client_message);
-            client_message = client_message + 1;
-            printf("[%s] : server sends %d\n",arg->host,client_message);
-            send(socket_descriptor,&client_message,sizeof(int),0);
+    int number = 0;
+     while(number <= 100){ 
+
+        if((errno = recv(client_socket,&number,sizeof(int),0)) < 0){
+            fprintf(stderr,"[%s] : ERROR\t%d\n",arg->host, errno);
+        }
+
+        number++;
+        if(number == 100) break;
+        printf("[%s] : %d\n",arg->host,number);
+
+
+        if((errno = send(client_socket,&number,sizeof(number),0)) < 0){
+            fprintf(stderr,"[%s]: ERROR\t%d\n",arg->host, errno);
         }
     }
-
     close(socket_descriptor);
 }   
 
