@@ -10,22 +10,53 @@
 #include <sys/socket.h>  
 #include <netinet/in.h>  
 #include <sys/time.h> //FD_SET, FD_ISSET, FD_ZERO macros  
-     
+#include <time.h>
 #define TRUE   1  
 #define FALSE  0  
 #define PORT 9002  
      
+
+void delay(int number_of_seconds)
+{
+    // Converting time into milli_seconds
+    int milli_seconds = 1000 * number_of_seconds;
+  
+    // Storing start time
+    clock_t start_time = clock();
+  
+    // looping till required time is not achieved
+    while (clock() < start_time + milli_seconds)
+        ;
+}
+
+int* bublesort(int n,int arr[n]){
+    for(int i = 1;i < n-1;i++){
+        for(int j = i;j < n;j++){
+            if(arr[i] < arr[j]){
+                int ax = arr[i];
+                arr[i] = arr[j];
+                arr[j] = ax; 
+            }
+        }
+    }
+    return arr;
+}
+
 int main(int argc , char *argv[])   
 {   
     int opt = TRUE;   
-    int master_socket   , addrlen , new_socket  , client_socket[30] ,  
+    int master_socket   , addrlen , new_socket  ,  
         max_clients = 30, activity,     i       , valread , sd;   
-    int max_sd;   
+    int max_sd;
+    int* client_port = (int*)calloc(sizeof(int),30); 
+    int* client_socket = (int*)calloc(sizeof(int),30);
+    int max_port = 0;   
     struct sockaddr_in address;   
     char buffer[1025];          // data buffer of 1K  
-    int number = 1;             // number to be sent to clients
+    int number = 0;             // number to be sent to clients
     fd_set readfds;             // set of socket descriptors   
-     
+    fd_set writefds;            // set of sockets for writting
+
     for (i = 0; i < max_clients; i++)  client_socket[i] = 0;   
          
     //create a master socket  
@@ -62,37 +93,42 @@ int main(int argc , char *argv[])
     addrlen = sizeof(address);   
     puts("Waiting for connections ...");   
          
-    while(TRUE)   
+    while(1)   
     {   
-        //clear the socket set  
-        FD_ZERO(&readfds);   
-     
-        //add master socket to set  
-        FD_SET(master_socket, &readfds);   
-        max_sd = master_socket;   
-             
-        //add child sockets to set  
-        for ( i = 0 ; i < max_clients ; i++)   
-        {   
-            //socket descriptor  
-            sd = client_socket[i];   
-                 
-            //if valid socket descriptor then add to read list  
-            if(sd > 0) FD_SET( sd , &readfds);   
-                 
-            //highest file descriptor number, need it for the select function  
-            if(sd > max_sd)  max_sd = sd;   
-        }   
-     
-        //wait for an activity on one of the sockets , timeout is NULL ,  
-        //so wait indefinitely  
-        activity = select( max_sd + 1 , &readfds , NULL , NULL , NULL);   
-       
-        if ((activity < 0) && (errno!=EINTR))   
-        {   
-            printf("select error");   
-        }   
-             
+        //setting up the client sockets for being accept then reading/writing 
+        {
+            //clear the socket set  
+            FD_ZERO(&readfds);
+        
+            //add master socket to set  
+            FD_SET(master_socket, &readfds);
+            max_sd = master_socket;   
+                
+            //add child sockets to set  
+            for ( i = 0 ; i < max_clients ; i++)   
+            {   
+                //socket descriptor  
+                sd = client_socket[i];   
+                    
+                //if valid socket descriptor then add to read list  
+                if(sd > 0) {
+                    FD_SET( sd , &readfds);
+                }   
+                    
+                //highest file descriptor number, need it for the select function  
+                if(sd > max_sd)  max_sd = sd;   
+            }   
+        
+            //wait for an activity on one of the sockets , timeout is NULL ,  
+            //so wait indefinitely  
+            activity = select( max_sd + 1 , &readfds , NULL , NULL , NULL);   
+        
+            if ((activity < 0) && (errno!=EINTR))   
+            {   
+                printf("select error");   
+            }   
+        }
+        
         //If something happened on the master socket ,  
         //then its an incoming connection  
         if (FD_ISSET(master_socket, &readfds))   
@@ -103,14 +139,7 @@ int main(int argc , char *argv[])
                 exit(EXIT_FAILURE);   
             }   
             printf("New connection , socket fd is %d , ip is : %s , port : %d  \n" , new_socket , inet_ntoa(address.sin_addr), ntohs(address.sin_port));   
-            
-            
-            //send new connection greeting message  
-            if( send(new_socket, &number,sizeof(number), 0) != 4)   
-            {   
-                perror("send");   
-            }   
-                 
+
             //add new socket to array of sockets  
             for (i = 0; i < max_clients; i++)   
             {   
@@ -118,42 +147,49 @@ int main(int argc , char *argv[])
                 if( client_socket[i] == 0 )   
                 {   
                     client_socket[i] = new_socket;   
+                    client_port[i] = ntohs(address.sin_port);
+                    client_port = bublesort(max_clients,client_port);
+                    client_socket = bublesort(max_clients,client_socket);
+                    if(max_port < client_port[i]) max_port = client_port[i];
+
+                    //send new connection the number 
+                    if(i == 0) {
+                        send(new_socket, &number,sizeof(number), 0);   
+                    }
                     printf("Adding to list of sockets as %d\n" , i);   
-                         
                     break;   
                 }   
-            }   
+            }
         }   
              
         //else its some IO operation on some other socket 
-        for (i = 0; i < max_clients; i++)   
+        for (i = 0; i < max_clients-1; i++)   
         {   
             sd = client_socket[i];   
-                 
+
             if (FD_ISSET( sd , &readfds))   
             {   
-                //Check if it was for closing , and also read the  
-                //incoming message  
                 if ((valread = read( sd , &number, sizeof(number))) == 0)   
                 {   
-                    //Somebody disconnected , get his details and print  
                     getpeername(sd , (struct sockaddr*)&address, (socklen_t*)&addrlen);   
                     printf("Host disconnected , ip %s , port %d \n" ,inet_ntoa(address.sin_addr) , ntohs(address.sin_port));   
                          
-                    //Close the socket and mark as 0 in list for reuse  
                     close( sd );   
                     client_socket[i] = 0;   
                 }   
-                //Echo back the message that came in  
                 else 
-                {   
-                    //set the string terminating NULL byte on the end  
-                    //of the data read  
-                    number++;
-                    send(sd , &number,sizeof(number) , 0 );   
+                { 
+                    //right now two ports are exchanging values
+                    if(client_port[i+1] != 0)
+                        send(client_socket[(i+1)],&number,sizeof(number),0);
+                    else 
+                        send(client_socket[(0)],&number,sizeof(number),0);
                 }   
-            }   
-        }   
+            }
+
+        } 
+
+
     }   
          
     return 0;   

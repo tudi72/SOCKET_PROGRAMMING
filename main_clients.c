@@ -86,13 +86,9 @@ void* routine_client_main(void* args){
 
 
     // receive data from the server
-    int number = 1;
+    int number;
     while(number <= 100){
         
-        if((errno = send(socket_descriptor,&number,sizeof(int),0))  < 1)
-        {
-            fprintf(stderr,"[ERROR CLIENT]: send(socket2) : %d\n",errno);
-        }
 
         
         if((errno = recv(socket_descriptor,&number,sizeof(int),0)) < 1)
@@ -102,6 +98,11 @@ void* routine_client_main(void* args){
         number++;
         if(number == 100) break;
         printf("[SERVER]----->[%s] : %d\n",arg,number);
+
+        if((errno = send(socket_descriptor,&number,sizeof(int),0))  < 1)
+        {
+            fprintf(stderr,"[ERROR CLIENT]: send(socket2) : %d\n",errno);
+        }
 
     }
     close(socket_descriptor);
