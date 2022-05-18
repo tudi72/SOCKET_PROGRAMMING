@@ -18,9 +18,8 @@ void create_client_socket(){
     // SOCK_STREAM  = sequenced, two-way communication   | type specifying communication semantics
     // 0            = same protocol as socket type       | protocol
     int socket_descriptor = socket(AF_INET,SOCK_STREAM,0);
-    int socket_descriptor2 = socket(AF_INET,SOCK_STREAM,0);
 
-    if(socket_descriptor == -1 || socket_descriptor2 == -1){
+    if(socket_descriptor == -1 ){
         perror("couldn't create socket descriptor");
         exit(1);
     }
@@ -35,20 +34,10 @@ void create_client_socket(){
     server_address.sin_port         = htons(9002);
     server_address.sin_addr.s_addr  = inet_addr("127.0.0.1");
 
-    struct sockaddr_in server_address2;
-    // sin_family   = IPV4                      | required in LInux 
-    // sin_port     = port                      | port in network byte order
-    // sin_addr     = inet_addr("127.0.0.1");   | IP host address
-    server_address2.sin_family       = AF_INET; 
-    server_address2.sin_port         = htons(9002);
-    server_address2.sin_addr.s_addr  = inet_addr("127.0.0.2");
-
-
     int connection_status = connect(socket_descriptor,(struct sockaddr*)&server_address,sizeof(server_address));
-    int connection_status2 = connect(socket_descriptor2,(struct sockaddr*)&server_address2,sizeof(server_address2));
 
 
-    if(connection_status < 0 || connection_status2 < 0 ){
+    if(connection_status < 0 ){
         perror("ERROR : binding socket to address");
         exit(1);
     }
@@ -57,7 +46,7 @@ void create_client_socket(){
     // receive data from the server
     int number = 1;
     while(1){
-        printf("[CLIENT %s] : d\n",number);
+        printf("[CLIENT ] : %d\n",number);
         
         if(send(socket_descriptor,&number,sizeof(int),0) < 0){
             perror("ERROR CLIENT : send message failed...\n");
@@ -77,7 +66,6 @@ void create_client_socket(){
     }
     puts("here");
     close(socket_descriptor);
-    close(socket_descriptor2);
 }   
 
 

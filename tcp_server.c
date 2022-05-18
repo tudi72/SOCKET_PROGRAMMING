@@ -12,7 +12,9 @@
 #define PORT 8080
 #define SA struct sockaddr
 
-void create_server_socket(const char* adr){
+const char* get_socket_ip(int socket);
+
+void create_server_socket(){
 
     // AF_INET      = IPv4                               | domain
     // SOCK_STREAM  = sequenced, two-way communication   | type specifying communication semantics
@@ -20,6 +22,11 @@ void create_server_socket(const char* adr){
     int socket_descriptor = socket(AF_INET,SOCK_STREAM,0);
 
     if(socket_descriptor == -1){
+        perror("couldn't create socket descriptor");
+        exit(1);
+    }
+
+    if (setsockopt(socket_descriptor, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0){
         perror("couldn't create socket descriptor");
         exit(1);
     }
@@ -32,7 +39,7 @@ void create_server_socket(const char* adr){
     // sin_addr     = inet_addr("127.0.0.1");   | IP host address
     server_address.sin_family       = AF_INET; 
     server_address.sin_port         = htons(9002);
-    server_address.sin_addr.s_addr  = inet_addr(adr);
+    server_address.sin_addr.s_addr  = INADDR_ANY;
 
 
     // binding the socket descriptor to the server address 
@@ -50,6 +57,8 @@ void create_server_socket(const char* adr){
     int client_socket;
     // accept - extracts the first connection request from the queue of pending connections 
     client_socket = accept(socket_descriptor,NULL,NULL);
+    const char* client_IP = get_socket_ip(client_socket);
+    printf("[CLIENT ADDRESS]: %s\n",client_IP);
 
     puts("Server : Connection accepted...\n");
 
@@ -73,13 +82,22 @@ void create_server_socket(const char* adr){
 
 }   
 
-
 int main(){
     //  SERVER SOCKET WORKFLOW
     // 1.create socket
     // 2. bind socket to one and only one IP address
     // 3. listen to different clients(ip addresses)
     // 4. accept a connection and then send / recv data
-    create_server_socket("127.0.0.1");
+    create_server_socket();
     return 0;
+}
+
+const char* get_socket_ip(int socket){
+    
+    struct sockaddr_in  addr;
+    // Get my ip address and port
+    bzero(&addr, sizeof(addr));
+    socklen_t len = sizeof(addr);
+    getsockname(socket, (struct sockaddr *) &addr, &len);
+    return inet_ntoa(addr.sin_addr);
 }
